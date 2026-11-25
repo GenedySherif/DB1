@@ -69,6 +69,7 @@ nav#nav a[aria-current=page]{background:var(--pri);color:#fff}
 .back{font-weight:500;text-decoration:none;font-size:15px;align-self:flex-start;min-height:36px;display:inline-flex;align-items:center}
 .tag{font-size:12.5px;padding:3px 9px;border-radius:999px;background:var(--sunk);color:var(--muted);white-space:nowrap}
 .tag.good{background:var(--good-soft);color:var(--good)}
+.tag.focus{background:var(--warm-soft);color:var(--warm);align-self:flex-start;font-weight:500}
 .okdot{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--good);color:#fff;flex:none}
 
 .hello{display:grid!important;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:18px;align-items:center}
@@ -337,17 +338,94 @@ details.lec summary{cursor:pointer;font-weight:500;min-height:36px;display:flex;
 .lb img{max-width:min(1100px,100%);max-height:85vh;border-radius:10px;background:#fff}
 .lb span{display:block;color:#d4d8f0;font-size:13px;margin-top:6px}
 
+/* Lektion & Diagramme */
+.lesson{border-top:5px solid var(--mc)}
+.lesson h2{display:flex;align-items:center;gap:8px}
+.lesson h2 svg{color:var(--mc)}
+.ldots{display:flex;gap:6px;flex-wrap:wrap}
+.ldots button{all:unset;box-sizing:border-box;cursor:pointer;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-weight:600;font-size:14px;background:var(--sunk);color:var(--muted)}
+.ldots button.past{background:var(--good-soft);color:var(--good)}
+.ldots button[aria-pressed=true]{background:var(--mc);color:#fff}
+.ldots button:focus-visible{outline:3px solid var(--pri)}
+.ltitle{font-size:20px;margin:4px 0 0}
+.dia{overflow-x:auto;background:var(--sunk);border-radius:16px;padding:14px}
+.lx{font-size:16px;line-height:1.65;max-width:75ch}
+.dg{width:100%;height:auto;display:block;font-family:var(--f);max-width:720px;margin:0 auto}
+.d-mono{font-family:var(--mono);white-space:pre}
+.d-b{fill:var(--card);stroke:var(--line);stroke-width:1.5}
+.d-s{fill:var(--card);stroke:none}
+.d-p{fill:var(--pri-soft);stroke:var(--pri);stroke-width:1.5}
+.d-g{fill:var(--good-soft);stroke:var(--good);stroke-width:1.5}
+.d-r{fill:var(--bad-soft);stroke:var(--bad);stroke-width:1.5}
+.d-w{fill:var(--warm-soft);stroke:var(--warm);stroke-width:1.5}
+.d-n{fill:none;stroke:var(--faint);stroke-width:1.3;stroke-dasharray:4 3}
+.d-pc{fill:var(--pri-soft);opacity:.85}
+.d-pr{fill:var(--pri-soft)}
+.d-g0{fill:light-dark(#e3e8ff,#232b5a)}.d-g1{fill:light-dark(#ffe9d9,#3a2a18)}.d-g2{fill:light-dark(#d9f3e8,#16362a)}
+.d-t{fill:var(--ink)}.d-m{fill:var(--muted)}.d-f{fill:var(--faint)}.d-tp{fill:var(--pri)}.d-tg{fill:var(--good)}.d-tr{fill:var(--bad)}.d-tw{fill:var(--warm)}
+.d-l{stroke:var(--muted);stroke-width:1.6;fill:none}
+.d-lp{stroke:var(--pri);stroke-width:1.8;fill:none}
+.d-lg{stroke:var(--good);stroke-width:2;fill:none}
+.d-lw{stroke:var(--warm);stroke-width:1.8;fill:none}
+.d-ld{stroke:var(--faint);stroke-width:1.2;stroke-dasharray:3 3;fill:none}
+.d-lt{stroke:var(--line);stroke-width:1}
+.d-lk{stroke:var(--warm);stroke-width:2}
+.d-lx{stroke:var(--bad);stroke-width:1.4;opacity:.7}
+.d-lb{stroke:var(--pri);stroke-width:2;fill:none}
+.d-lb2{stroke:var(--warm);stroke-width:2;fill:none}
+.d-ma{fill:var(--muted)}.d-mp{fill:var(--pri)}.d-mg{fill:var(--good)}.d-mw{fill:var(--warm)}
+.d-vf{fill:var(--pri);fill-opacity:.28;stroke:none}.d-vb{fill:none;stroke:none}.d-vf2{fill:var(--pri);fill-opacity:.28;stroke:none}.d-vcut{fill:var(--sunk);stroke:none}.d-vo{fill:none;stroke:var(--pri);stroke-width:2}
+
+/* Lernpfad, Probeklausur, Hinweise */
+.path{display:flex;flex-direction:column;gap:8px}
+.pstep{all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:28px 44px minmax(0,1fr) 20px;gap:12px;align-items:center;padding:10px 12px;border-radius:16px;background:var(--sunk);min-height:64px;border:1.5px solid transparent}
+.pstep:hover{border-color:var(--pri)}
+.pstep:focus-visible{outline:3px solid var(--pri)}
+.pstep b{display:block;font-weight:600}
+.pstep span span{font-size:13.5px;color:var(--muted)}
+.pnum{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--pri);color:#fff;font-weight:700;font-size:14px}
+.parrow{font-size:22px;color:var(--faint)}
+.kbdhint{font-size:13px;color:var(--faint);text-align:center}
+.focus.wide{max-width:820px}
+.examhead{position:sticky;top:62px;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--card);border-radius:16px;padding:10px 16px;box-shadow:var(--shadow)}
+.timer{font:600 22px var(--mono);color:var(--ink)}
+.timer.bad{color:var(--bad)}
+.q-big.sm{font-size:18px}
+.opt.chosen{border-color:var(--pri);background:var(--pri-soft)} .opt.chosen .ok-l{background:var(--pri);border-color:var(--pri);color:#fff}
+.small-ed{min-height:110px;font-size:15px}
+.exrow{padding:6px 0;border-top:1px solid var(--line)}
+.bnav{display:none}
+.sbox{width:100%;min-height:48px;font-size:16px;border-radius:14px;border:2px solid var(--line);background:var(--card);padding:10px 14px;color:var(--ink)}
+.sbox:focus{outline:none;border-color:var(--pri)}
+.hit{background:var(--sunk);border-radius:14px;padding:10px 14px;display:flex;flex-direction:column;gap:4px}
+
 @media (max-width:900px){.hello,.two{grid-template-columns:minmax(0,1fr)!important}.quick{grid-template-columns:repeat(2,minmax(0,1fr))!important}.con{grid-template-columns:minmax(0,1fr)}.side{position:static}}
-@media (max-width:600px){.brand span{display:none}.mhead{padding:14px;gap:12px}.rate .btn{padding:8px 6px;font-size:14px}.flash-in{min-height:280px}.formula .sqlh{margin-left:0}.frow{grid-template-columns:minmax(0,1fr)}.acc-h{grid-template-columns:44px minmax(0,1fr) auto;padding:12px 14px}.acc-nr{font-size:20px}.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.tile{padding:12px}.tile-t{font-size:15px}.quick{gap:8px}.qa{padding:10px;gap:8px;min-height:64px}.qa-ic{width:36px;height:36px}.today-n{font-size:44px}}
+@media (max-width:700px){nav#nav{display:none}.brand span{display:inline}
+.bnav{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));position:fixed;left:0;right:0;bottom:0;z-index:40;background:light-dark(rgba(255,255,255,.96),rgba(23,27,48,.96));backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:4px 4px max(4px,env(safe-area-inset-bottom))}
+.bnav a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:56px;text-decoration:none;color:var(--muted);font-size:11.5px;font-weight:500;border-radius:12px}
+.bnav a[aria-current=page]{color:var(--pri)}
+.bnav a[aria-current=page] svg{background:var(--pri-soft);border-radius:10px;padding:2px 10px;width:44px;box-sizing:content-box;height:22px}
+#view{padding-bottom:110px}
+.examhead{top:56px}}
+@media (max-width:600px){.mhead{padding:14px;gap:12px}.rate .btn{padding:8px 6px;font-size:14px}.flash-in{min-height:280px}.formula .sqlh{margin-left:0}.frow{grid-template-columns:minmax(0,1fr)}.acc-h{grid-template-columns:44px minmax(0,1fr) auto;padding:12px 14px}.acc-nr{font-size:20px}.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.tile{padding:12px}.tile-t{font-size:15px}.quick{gap:8px}.qa{padding:10px;gap:8px;min-height:64px}.qa-ic{width:36px;height:36px}.today-n{font-size:44px}}
 </style>
 </head>
 <body>
 <header class="top"><div class="top-in"><a class="brand" href="#start"><i>DB</i><span>Datenbanksysteme</span></a><nav id="nav" aria-label="Bereiche"></nav></div></header>
 <main id="view"></main>
+<nav id="bnav" class="bnav" aria-label="Hauptbereiche"></nav>
 <div class="lb" id="lb" hidden></div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+<marker id="dga" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="d-ma"/></marker>
+<marker id="dgp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="d-mp"/></marker>
+<marker id="dgg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="d-mg"/></marker>
+<marker id="dgw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="d-mw"/></marker>
+</defs></svg>
 <script src="dbs.js"></script>
 <script src="content.js"></script>
 <script src="learn.js"></script>
+<script src="lessons.js"></script>
+<script src="klausur.js"></script>
 <script src="sql-wasm.js"></script>
 <script src="app.js"></script>
 </body>

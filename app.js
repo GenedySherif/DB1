@@ -4,8 +4,9 @@ const KEY = 'db-lernapp-v2';
 const DAY = 864e5;
 const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
 const isoDay = t => new Date(t).toISOString().slice(0, 10);
-let S = { cards: {}, quizBest: {}, solved: {}, puz: {}, checks: {}, days: [], hist: [], lv: 0, newDay: { d: 0, n: 0 } };
+let S = { cards: {}, quizBest: {}, solved: {}, puz: {}, checks: {}, days: [], hist: [], lv: 0, newDay: { d: 0, n: 0 }, lessons: {}, exams: [], wrong: {} };
 try { Object.assign(S, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) {}
+S.lessons = S.lessons || {}; S.exams = S.exams || []; S.wrong = S.wrong || {};
 try { const old = JSON.parse(localStorage.getItem('db-lernplan-v1') || 'null'); if (old && old.solved && !Object.keys(S.solved).length) S.solved = old.solved; } catch (e) {}
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -33,15 +34,19 @@ LECTURES.forEach(l => (l.uebungen || []).forEach((u, i) => {
 PRAKTIKA.forEach(p => p.aufgaben.forEach((a, i) => { if (a.sql) TASKS['P-' + p.id + '-' + i] = { titel: 'Praktikum ' + p.nr + ' · ' + a.nr, text: a.aufgabe, db: a.db, sql: a.sql, pre: a.pre, ordered: a.ordered, alt: a.alt, tipp: a.tipp, loesung: a.loesung }; }));
 const fmtSql = s => s.replace(/ (FROM|WHERE|GROUP BY|HAVING|ORDER BY|LEFT JOIN|LEFT OUTER JOIN|JOIN|UNION|INTERSECT|EXCEPT) /g, '\n$1 ');
 DRILL.forEach(d => {
-  TASKS['D-' + d.id] = { titel: 'SQL-Training ' + d.id.slice(1) + ' · Level ' + d.lv, text: d.t, db: d.db, sql: d.sql, alt: d.alt, ordered: d.ordered, tipp: d.h, loesung: fmtSql(d.sql) + '\n\n' + d.e };
-  EXS.push({ m: DRILL_MAP[d.id], key: 'dr:' + d.id, titel: 'SQL-Training ' + d.id.slice(1) + ' · Level ' + d.lv, aufgabe: d.t, tipp: d.h, loesung: TASKS['D-' + d.id].loesung, task: 'D-' + d.id, lv: d.lv });
+  const ttl = (d.lv === 4 ? 'Klausurniveau · ' + ({ dml: 'DML', ddl: 'DDL' }[d.kind] || 'SQL') + ' ' + d.id.toUpperCase() : 'SQL-Training ' + d.id + ' · Level ' + d.lv);
+  TASKS['D-' + d.id] = { titel: ttl, text: d.t, db: d.db, sql: d.sql, alt: d.alt, ordered: d.ordered, tipp: d.h, verify: d.verify, kind: d.kind, loesung: fmtSql(d.sql).replace(/; /g, ';\n') + '\n\n' + d.e };
+  EXS.push({ m: DRILL_MAP[d.id], key: 'dr:' + d.id, titel: ttl, aufgabe: d.t, tipp: d.h, loesung: TASKS['D-' + d.id].loesung, task: 'D-' + d.id, lv: d.lv });
 });
+
+ALG.forEach((a, i) => EXS.push({ m: a.m || 'algebra', key: 'alg:' + i, titel: a.t, aufgabe: a.a, loesung: a.l, paper: true, lv: /-K\d/.test(a.t) ? 4 : 2 }));
+EXS.sort((x, y) => (y.lv || 1) - (x.lv || 1));
 
 /* ================= Fortschritt ================= */
 const mastered = c => (S.cards[c.id] && S.cards[c.id].b >= 3);
 function modProgress(mid) {
   const cs = ALLCARDS.filter(c => c.m === mid), ts = EXS.filter(e => e.m === mid), ps = PUZZLES.filter(p => p.m === mid);
-  const parts = [[cs.filter(mastered).length / (cs.length || 1), 0.4], [(S.quizBest[mid] || 0) / 100, 0.25], [ts.filter(e => S.checks[e.key] || (e.task && S.solved[e.task])).length / (ts.length || 1), 0.2], [ps.filter(p => S.puz[p.id]).length / (ps.length || 1), 0.15]];
+  const parts = [[S.lessons[mid] ? 1 : 0, 0.15], [cs.filter(mastered).length / (cs.length || 1), 0.3], [(S.quizBest[mid] || 0) / 100, 0.2], [ts.filter(e => S.checks[e.key] || (e.task && S.solved[e.task])).length / (ts.length || 1), 0.2], [ps.filter(p => S.puz[p.id]).length / (ps.length || 1), 0.15]];
   return Math.round(parts.reduce((a, [v, w]) => a + v * w, 0) * 100);
 }
 const ring = (pct, col, size = 56, sw = 6) => { const r = (size - sw) / 2, c = 2 * Math.PI * r; return `<svg class="ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--track)" stroke-width="${sw}"/><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${col}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - pct / 100)}" transform="rotate(-90 ${size / 2} ${size / 2})"/><text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-size="${size / 4.2}" font-weight="600" fill="currentColor">${pct}%</text></svg>`; };
@@ -52,6 +57,10 @@ const ICON = {
   lab: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M9 3h6M10 3v6l-5.5 9.5A2 2 0 0 0 6.2 21h11.6a2 2 0 0 0 1.7-2.5L14 9V3" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M7.5 15h9" stroke="currentColor" stroke-width="2"/></svg>',
   puzzle: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 8h4a2 2 0 1 1 4 0h4v4a2 2 0 1 1 0 4v4h-4a2 2 0 1 0-4 0H4v-4a2 2 0 1 0 0-4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
   term: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9l3 3-3 3M12 15h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  book: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M4 19V5M8 7h7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  exam: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="13" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 9v4l3 2M10 2h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  home: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+  more: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="5" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="19" cy="12" r="2" fill="currentColor"/></svg>',
   check: '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 
@@ -91,7 +100,7 @@ function startQuiz(mid, onlyIds) {
 function answer(k) {
   if (QS.picked !== null) return;
   const q = QS.qs[QS.i]; QS.picked = k;
-  if (q.opts[k].ok) QS.score++; else QS.wrong.push(q.id);
+  if (q.opts[k].ok) { QS.score++; if (S.wrong[q.id]) { S.wrong[q.id]--; if (S.wrong[q.id] <= 0) delete S.wrong[q.id]; } } else { QS.wrong.push(q.id); S.wrong[q.id] = 2; }
   markActive(); render();
 }
 function nextQ() {
@@ -144,12 +153,13 @@ async function checkSql() {
   const q = $('ed').value; con.text = q;
   if (!q.trim()) { con.msg = { t: 'err', s: 'Schreib zuerst eine Anfrage.' }; renderOut(); return; }
   await loadSQL(); let exp, got;
-  try { const d = makeDb(t.db); if (t.pre) d.exec(t.pre); exp = lastResult(d, t.alt || t.sql); d.close(); } catch (e) { con.msg = { t: 'err', s: 'Interner Fehler: ' + e.message }; renderOut(); return; }
-  try { const d = makeDb(t.db); if (t.pre) d.exec(t.pre); got = lastResult(d, q); d.close(); } catch (e) { con.out = null; con.msg = { t: 'err', s: 'Fehler in deiner Anfrage: ' + e.message }; renderOut(); return; }
+  try { const d = makeDb(t.db); if (t.pre) d.exec(t.pre); if (t.verify) { d.exec(t.sql); exp = lastResult(d, t.verify); } else exp = lastResult(d, t.alt || t.sql); d.close(); } catch (e) { con.msg = { t: 'err', s: 'Interner Fehler: ' + e.message }; renderOut(); return; }
+  try { const d = makeDb(t.db); if (t.pre) d.exec(t.pre); if (t.verify) { d.exec(q); got = lastResult(d, t.verify); } else got = lastResult(d, q); d.close(); } catch (e) { con.out = null; con.msg = { t: 'err', s: 'Fehler in deiner Anweisung: ' + e.message }; renderOut(); return; }
   pushHist(q); con.out = got;
   const diff = compare(exp, got, t.ordered);
-  if (!diff) { S.solved[con.task] = true; markActive(); con.msg = { t: 'ok', s: 'Richtig! Dein Ergebnis stimmt mit der Musterlösung überein' + (t.ordered ? ' – inklusive Sortierung.' : '.') }; }
-  else con.msg = { t: 'err', s: 'Noch nicht: ' + diff };
+  const what = t.kind === 'ddl' ? 'Die Struktur (Attribute, Pflichtfelder, Schlüssel, Fremdschlüssel)' : t.kind === 'dml' ? 'Der Datenbankzustand nach deinen Anweisungen' : 'Dein Ergebnis';
+  if (!diff) { S.solved[con.task] = true; markActive(); con.msg = { t: 'ok', s: 'Richtig! ' + what + ' stimmt mit der Musterlösung überein' + (t.ordered ? ' – inklusive Sortierung.' : '.') + (t.verify ? '\nUnten siehst du den geprüften Zustand.' : '') }; }
+  else con.msg = { t: 'err', s: 'Noch nicht: ' + (t.verify ? what + ' weicht ab. ' : '') + diff };
   renderOut(); renderSide();
 }
 
@@ -157,7 +167,7 @@ async function checkSql() {
 const tog = (k, a, b) => `<button class="btn sm ${shown[k] ? 'on' : ''}" data-act="show" data-k="${esc(k)}" aria-pressed="${!!shown[k]}">${esc(shown[k] ? b : a)}</button>`;
 function exCard(o) {
   const done = !!S.checks[o.key] || !!(o.task && S.solved[o.task]);
-  let h = `<div class="ex ${done ? 'done' : ''}"><div class="ex-top"><div class="ex-title">${done ? `<span class="okdot">${ICON.check}</span>` : ''}${esc(o.titel)}</div><div class="row">`;
+  let h = `<div class="ex ${done ? 'done' : ''}"><div class="ex-top"><div class="ex-title">${done ? `<span class="okdot">${ICON.check}</span>` : ''}${esc(o.titel)}${o.paper ? ' <span class="tag">auf Papier</span>' : ''}</div><div class="row">`;
   if (o.task) h += `<button class="btn sm pri" data-act="toConsole" data-k="${esc(o.task)}">In Konsole üben</button>`;
   if (o.tipp) h += tog('h:' + o.key, 'Denkanstoß', 'Denkanstoß zu');
   h += tog('s:' + o.key, 'Lösung', 'Lösung zu');
@@ -345,11 +355,106 @@ function puzzleView() {
   return h + '</div></div>';
 }
 
+/* ================= Lektionen ================= */
+const LS = {};
+function lessonHTML(mid) {
+  const L = LESSONS[mid]; if (!L) return '';
+  const i = Math.min(LS[mid] || 0, L.length - 1), st = L[i], m = MOD[mid], done = !!S.lessons[mid];
+  return `<section class="lesson panel" id="lektion" style="--mc:${m.c}"><div class="row between"><h2>${ICON.book} Lektion</h2><span class="faint">${done ? '<span class="tag good">abgeschlossen</span> ' : ''}Schritt ${i + 1} von ${L.length}</span></div>
+  <div class="ldots">${L.map((x, j) => `<button data-act="lstep" data-k="${mid}:${j}" aria-label="Schritt ${j + 1}: ${esc(x.t)}" aria-pressed="${j === i}" class="${j < i ? 'past' : ''}">${j + 1}</button>`).join('')}</div>
+  <h3 class="ltitle">${esc(st.t)}</h3><div class="dia">${st.d()}</div><p class="lx">${esc(st.x)}</p>
+  <div class="row between"><button class="btn" data-act="lstep" data-k="${mid}:${i - 1}" ${i === 0 ? 'disabled' : ''}>‹ Zurück</button>${i < L.length - 1 ? `<button class="btn pri" data-act="lstep" data-k="${mid}:${i + 1}">Weiter ›</button>` : `<button class="btn good" data-act="ldone" data-k="${mid}">${done ? 'Wiederholt ✓' : 'Lektion abschließen ✓'}</button>`}</div></section>`;
+}
+
+/* ================= Probeklausur ================= */
+const EXAM_MIN = 45;
+let KL = null;
+let klTimer = null;
+function startExam() {
+  const qs = shuffle(QZ).slice(0, 6).map(q => ({ k: 'q', ...q, opts: shuffle(q.o.map((t, j) => ({ t, ok: j === 0 }))) }));
+  const pickAlg = m => shuffle(ALG.filter(a => a.m === m && /-K\d/.test(a.t)))[0] || shuffle(ALG.filter(a => (a.m || 'algebra') === m))[0];
+  const ra = pickAlg('algebra'), tk = pickAlg('kalkuel');
+  const dbn = { uni: 'Uni-DB', spj: 'SPJ-DB', fam: 'Familienbaum' };
+  const sq = shuffle(DRILL.filter(d => d.lv === 4 && !d.kind)).slice(0, 2);
+  const dm = shuffle(DRILL.filter(d => d.lv === 4 && d.kind).map(d => ({ titel: (d.kind === 'ddl' ? 'DDL' : 'DML') + ' · ' + dbn[d.db], text: d.t, loesung: TASKS['D-' + d.id].loesung, task: 'D-' + d.id })).concat(ALG.filter(a => a.m === 'dml').map(a => ({ titel: a.t.replace(/^[A-Z]+-K\d+ · /, 'DML/DDL · '), text: a.a, loesung: a.l }))))[0];
+  const tasks = [{ k: 't', titel: 'Relationale Algebra', text: ra.a, loesung: ra.l }, { k: 't', titel: 'Tupelkalkül', text: tk.a, loesung: tk.l }].concat(sq.map(d => ({ k: 't', titel: 'SQL · ' + dbn[d.db], text: d.t, loesung: TASKS['D-' + d.id].loesung, task: 'D-' + d.id })), [{ k: 't', ...dm }]);
+  KL = { end: Date.now() + EXAM_MIN * 6e4, items: qs.concat(tasks), ans: {}, notes: {}, grade: {}, done: false };
+  go('klausur'); tickExam();
+}
+function tickExam() {
+  clearInterval(klTimer);
+  klTimer = setInterval(() => {
+    if (!KL || KL.done) { clearInterval(klTimer); return; }
+    const ms = KL.end - Date.now(), el = $('kl-timer');
+    if (ms <= 0) { submitExam(); return; }
+    if (el) { el.textContent = Math.floor(ms / 6e4) + ':' + String(Math.floor(ms % 6e4 / 1e3)).padStart(2, '0'); el.classList.toggle('bad', ms < 5 * 6e4); }
+  }, 1000);
+}
+function submitExam() { if (!KL || KL.done) return; KL.done = true; clearInterval(klTimer); markActive(); if (route() === 'klausur') keep(); }
+function examScore() {
+  let q = 0, t = 0; KL.items.forEach((it, i) => { if (it.k === 'q' && KL.ans[i] !== undefined && it.opts[KL.ans[i]].ok) q++; if (it.k === 't') t += KL.grade[i] || 0; });
+  const max = KL.items.filter(i => i.k === 'q').length + KL.items.filter(i => i.k === 't').length * 4; return { q, t, max, pct: Math.round((q + t) / max * 100) };
+}
+function examView() {
+  if (!KL) return `<section><h1>Probeklausur</h1><p class="faint">${EXAM_MIN} Minuten · 26 Punkte. Gewichtet nach der Info vom Prof (relationales Modell, Algebra, Tupelkalkül, SQL > 80 %): je 1 Aufgabe Algebra, Tupelkalkül und DML/DDL plus 2 SQL-Anfragen auf Klausurniveau (je 4 Punkte, selbst bewertet) und 6 Theoriefragen (je 1 Punkt). Feedback erst nach der Abgabe. Aufgabenformat ist eine Annahme, solange das echte Format offen ist.</p></section><button class="hero-btn" data-act="exam">${ICON.exam}<span><b>Probeklausur starten</b><span>Timer läuft sofort los</span></span></button>${S.exams.length ? `<section class="panel"><h2>Bisherige Versuche</h2>${S.exams.slice(-8).reverse().map(x => `<div class="row between exrow"><span>${esc(new Date(x.d).toLocaleDateString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}</span><b>${x.pct} %</b></div>`).join('')}</section>` : ''}`;
+  const sc = KL.done ? examScore() : null;
+  let h = `<div class="focus wide"><div class="examhead"><b>Probeklausur</b>${KL.done ? `<span class="tag good">abgegeben · ${sc.q + sc.t} / ${sc.max} Punkte (${sc.pct} %)</span>` : `<span class="timer" id="kl-timer">${EXAM_MIN}:00</span><button class="btn sm pri" data-act="examsubmit">Abgeben</button>`}</div>`;
+  KL.items.forEach((it, i) => {
+    if (it.k === 'q') {
+      h += `<div class="qcard"><div class="q-meta">Aufgabe ${i + 1} · Theorie · 1 Punkt · ${esc(MOD[it.m].t)}</div><div class="q-big sm">${esc(it.q)}</div><div class="opts">${it.opts.map((o, k) => { const sel = KL.ans[i] === k; const st = !KL.done ? (sel ? 'chosen' : '') : o.ok ? 'right' : sel ? 'wrong' : 'dim'; return `<button class="opt ${st}" data-act="exans" data-k="${i}:${k}" ${KL.done ? 'disabled' : ''}><span class="ok-l">${'ABCD'[k]}</span><span>${esc(o.t)}</span></button>`; }).join('')}</div>${KL.done ? `<div class="faint">${esc(it.e)}</div>` : ''}</div>`;
+    } else {
+      h += `<div class="qcard"><div class="q-meta">Aufgabe ${i + 1} · 4 Punkte · ${esc(it.titel)}</div><div class="q-big sm pre-line">${esc(it.text)}</div><textarea class="editor small-ed" data-act="exnote" data-k="${i}" placeholder="Hier oder auf Papier lösen …" ${KL.done ? 'readonly' : ''}>${esc(KL.notes[i] || '')}</textarea>`;
+      if (KL.done) h += `<div class="sol">${esc(it.loesung)}</div><div class="row"><span class="faint">Selbst bewerten:</span>${[[0, '0 P.'], [2, '2 P.'], [4, '4 P.']].map(([v, l]) => `<button class="btn sm ${KL.grade[i] === v ? 'on' : ''}" data-act="exgrade" data-k="${i}:${v}">${l}</button>`).join('')}${it.task ? `<button class="btn sm" data-act="toConsole" data-k="${it.task}">In Konsole prüfen</button>` : ''}</div>`;
+      h += '</div>';
+    }
+  });
+  h += KL.done ? `<div class="row center"><button class="btn pri big" data-act="examsave">Ergebnis speichern</button><button class="btn big" data-act="exam">Neue Probeklausur</button></div>` : `<div class="row center"><button class="btn pri big" data-act="examsubmit">Abgeben</button></div>`;
+  return h + '</div>';
+}
+
+/* ================= Lernpfad ================= */
+function learnPath() {
+  const steps = [];
+  const wn = Object.keys(S.wrong).length;
+  if (wn) steps.push([ICON.quiz, 'Fehlerliste wiederholen', `${wn} Quizfrage${wn === 1 ? '' : 'n'} zuletzt falsch`, 'quizmine', '']);
+  const n = dueCards().length + Math.min(newLeft(), newCards().length);
+  if (n) steps.push([ICON.cards, 'Karteikarten', `${n} Karten für heute`, 'cards', '']);
+  const ml = MODULES.find(m => !S.lessons[m.id]);
+  if (ml) steps.push([ICON.book, 'Lektion: ' + ml.t, `${LESSONS[ml.id].length} Schritte mit Grafiken`, 'lesson', ml.id]);
+  const mq = MODULES.filter(m => S.lessons[m.id]).sort((a, b) => (S.quizBest[a.id] || 0) - (S.quizBest[b.id] || 0))[0];
+  if (mq && (S.quizBest[mq.id] || 0) < 80) steps.push([ICON.quiz, 'Quiz: ' + mq.t, `Bestwert ${S.quizBest[mq.id] || 0} % – Ziel 80 %`, 'quiz', mq.id]);
+  const d = DRILL.slice().sort((a, b) => b.lv - a.lv).find(x => !S.solved['D-' + x.id]);
+  if (d) steps.push([ICON.term, d.lv === 4 ? 'Klausuraufgabe ' + d.id.toUpperCase() : 'SQL-Aufgabe · Level ' + d.lv, d.t.length > 70 ? d.t.slice(0, 68) + '…' : d.t, 'toConsole', 'D-' + d.id]);
+  if (!S.exams.length && Object.keys(S.lessons).length >= 5) steps.push([ICON.exam, 'Probeklausur', `${EXAM_MIN} Minuten, gemischt`, 'exam', '']);
+  return steps.slice(0, 4);
+}
+
+/* ================= Suche & RemNote-Export ================= */
+let SQ = '';
+const IDX = [];
+MODULES.forEach(m => { m.kern.forEach(([t, d]) => IDX.push({ typ: 'Kernwissen', m: m.id, t, d, go: 'modul-' + m.id })); (LESSONS[m.id] || []).forEach((l, i) => IDX.push({ typ: 'Lektion', m: m.id, t: l.t, d: l.x, lesson: [m.id, i] })); });
+ALLCARDS.forEach(c => IDX.push({ typ: 'Karte', m: c.m, t: c.f, d: c.b, go: 'modul-' + c.m }));
+EXS.forEach(e => IDX.push({ typ: 'Aufgabe', m: e.m, t: e.titel, d: e.aufgabe, go: 'modul-' + e.m, task: e.task }));
+QZ.forEach(q => IDX.push({ typ: 'Quiz', m: q.m, t: q.q, d: q.o[0] + ' – ' + q.e, go: 'modul-' + q.m }));
+const norm2 = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+function searchResults(q) {
+  q = norm2(q.trim()); if (q.length < 2) return '<p class="faint">Mindestens 2 Zeichen eingeben – z. B. „MERGE“, „Division“, „NULL“, „Sicherheit“.</p>';
+  const words = q.split(/\s+/), hits = IDX.filter(x => { const h = norm2(x.t + ' ' + x.d); return words.every(w => h.includes(w)); }).slice(0, 40);
+  if (!hits.length) return '<p class="faint">Nichts gefunden.</p>';
+  return `<p class="faint">${hits.length}${hits.length === 40 ? '+' : ''} Treffer</p>` + hits.map(x => `<div class="hit"><div class="row between"><span class="tag" style="color:${MOD[x.m].c}">${esc(x.typ)} · ${esc(MOD[x.m].t)}</span>${x.lesson ? `<button class="btn sm" data-act="lessonAt" data-k="${x.lesson[0]}:${x.lesson[1]}">Lektion öffnen</button>` : x.task ? `<button class="btn sm pri" data-act="toConsole" data-k="${esc(x.task)}">In Konsole</button>` : `<a class="btn sm" href="#${x.go}">Zum Modul</a>`}</div><b>${esc(x.t)}</b><p class="faint pre-line">${esc(x.d.length > 260 ? x.d.slice(0, 258) + '…' : x.d)}</p></div>`).join('');
+}
+function remnoteText(mid) {
+  const one = s => String(s).replace(/\s*\n\s*/g, ' · ').replace(/==/g, '= =');
+  const mods = mid ? [MOD[mid]] : MODULES;
+  return mods.map(m => `${m.t}\n` + ALLCARDS.filter(c => c.m === m.id).map(c => `    ${one(c.f)} == ${one(c.b)}`).join('\n')).join('\n');
+}
+
 /* ================= Ansichten ================= */
-const NAV = [['start', 'Start'], ['karten', 'Karteikarten'], ['quiz', 'Quiz'], ['labor', 'Labor'], ['puzzles', 'Puzzles'], ['konsole', 'Konsole'], ['praktika', 'Praktika'], ['mehr', 'Mehr']];
+const NAV = [['start', 'Start'], ['karten', 'Karteikarten'], ['quiz', 'Quiz'], ['labor', 'Labor'], ['puzzles', 'Puzzles'], ['konsole', 'Konsole'], ['praktika', 'Praktika'], ['klausur', 'Probeklausur'], ['mehr', 'Mehr']];
+const BNAV = [['start', 'Start', 'home'], ['karten', 'Karten', 'cards'], ['quiz', 'Quiz', 'quiz'], ['labor', 'Labor', 'lab'], ['mehr', 'Mehr', 'more']];
 function route() { const h = location.hash.slice(1); if (h.startsWith('modul-') && MOD[h.slice(6)]) return h; return NAV.some(n => n[0] === h) ? h : 'start'; }
 function go(r) { if (location.hash.slice(1) === r) render(); else location.hash = r; window.scrollTo(0, 0); }
-function renderNav() { const r = route(), base = r.startsWith('modul-') ? 'start' : r; $('nav').innerHTML = NAV.map(([id, l]) => `<a href="#${id}" ${base === id ? 'aria-current="page"' : ''}>${esc(l)}</a>`).join(''); }
+function renderNav() { const r = route(), base = r.startsWith('modul-') ? 'start' : r; $('nav').innerHTML = NAV.map(([id, l]) => `<a href="#${id}" ${base === id ? 'aria-current="page"' : ''}>${esc(l)}</a>`).join(''); const bb = ['puzzles', 'konsole', 'praktika', 'klausur'].includes(base) ? 'mehr' : base; $('bnav').innerHTML = BNAV.map(([id, l, ic]) => `<a href="#${id}" ${bb === id ? 'aria-current="page"' : ''}>${ICON[ic]}<span>${esc(l)}</span></a>`).join(''); }
 
 function startView() {
   const due = dueCards().length, nl = Math.min(newLeft(), newCards().length), st = streak();
@@ -358,8 +463,10 @@ function startView() {
   const wk = WEEKS.find((w, i) => { const a = new Date(w.start + 'T00:00:00'), b = WEEKS[i + 1] ? new Date(WEEKS[i + 1].start + 'T00:00:00') : new Date(a.getTime() + 7 * DAY); return new Date() >= a && new Date() < b; });
   let h = `<section class="hello"><div><div class="hi-small">${new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}</div><h1>Hallo Sherif</h1><div class="pills"><span class="pill warm">${ICON.flame}<b>${st}</b> ${st === 1 ? 'Tag' : 'Tage'} Serie</span><span class="pill">${ring(totalPct, 'var(--pri)', 34, 4)} Gesamt</span>${ms > 0 ? `<span class="pill bad">Praktikum #6 · noch ${Math.floor(ms / 36e5)} h ${Math.floor(ms % 36e5 / 6e4)} min</span>` : ''}</div></div>
   <div class="today"><div class="today-n">${due + nl}</div><div><b>Karten für heute</b><div class="faint">${due} fällig · ${nl} neu</div></div><button class="btn pri big" data-act="cards" data-k="">Lernen starten ›</button></div></section>`;
-  h += `<section class="quick">${[['quiz', 'Klausur-Mix', '15 Fragen aus allen Modulen', ICON.quiz, 'mix'], ['labor', 'Labor', 'Joins & GROUP BY sehen', ICON.lab], ['puzzles', 'SQL-Puzzles', `${Object.keys(S.puz).length}/${PUZZLES.length} gelöst`, ICON.puzzle], ['konsole', 'Konsole', `${Object.keys(S.solved).length}/${Object.keys(TASKS).length} Aufgaben richtig`, ICON.term]].map(([r, t, s, ic, mix]) => `<button class="qa" data-act="${mix ? 'quizmix' : 'goto'}" data-k="${r}"><span class="qa-ic">${ic}</span><span><b>${t}</b><span>${s}</span></span></button>`).join('')}</section>`;
-  h += `<section><div class="sh"><h2>Module</h2><span class="faint">Fortschritt = Karten gemeistert · Quiz-Bestwert · Übungen · Puzzles</span></div><div class="tiles">${MODULES.map(m => `<a class="tile" href="#modul-${m.id}" style="--mc:${m.c}">${ring(modProgress(m.id), m.c)}<span class="tile-t">${esc(m.t)}</span><span class="tile-s">${esc(m.s)}</span></a>`).join('')}</div></section>`;
+  const path = learnPath();
+  if (path.length) h += `<section class="panel"><div class="sh"><h2>Dein Lernpfad</h2><span class="faint">Vorschläge in sinnvoller Reihenfolge</span></div><div class="path">${path.map(([ic, t, s, a, k], i) => `<button class="pstep" data-act="${a}" data-k="${esc(k)}"><span class="pnum">${i + 1}</span><span class="qa-ic">${ic}</span><span><b>${esc(t)}</b><span>${esc(s)}</span></span><span class="parrow">›</span></button>`).join('')}</div></section>`;
+  h += `<section class="quick">${[['quiz', 'Klausur-Mix', '15 Fragen aus allen Modulen', ICON.quiz, 'quizmix'], ['klausur', 'Probeklausur', `${EXAM_MIN} min · ${S.exams.length ? 'zuletzt ' + S.exams[S.exams.length - 1].pct + ' %' : 'noch nicht geschrieben'}`, ICON.exam, 'goto'], ['labor', 'Labor', 'Joins & GROUP BY sehen', ICON.lab, 'goto'], ['puzzles', 'SQL-Puzzles', `${Object.keys(S.puz).length}/${PUZZLES.length} gelöst`, ICON.puzzle, 'goto'], ['konsole', 'Konsole', `${Object.keys(S.solved).length}/${Object.keys(TASKS).length} Aufgaben richtig`, ICON.term, 'goto'], ['praktika', 'Praktika', 'Denkanstoß + Lösung', ICON.book, 'goto']].map(([r, t, s, ic, act]) => `<button class="qa" data-act="${act}" data-k="${r}"><span class="qa-ic">${ic}</span><span><b>${t}</b><span>${s}</span></span></button>`).join('')}</section>`;
+  h += `<section><div class="sh"><h2>Module</h2><span class="faint">Prof: relationales Modell, Algebra, Tupelkalkül und SQL = über 80 % der Klausur</span></div><div class="tiles">${MODULES.map(m => `<a class="tile" href="#modul-${m.id}" style="--mc:${m.c}">${ring(modProgress(m.id), m.c)}${m.focus ? '<span class="tag focus">Klausur-Schwerpunkt</span>' : ''}<span class="tile-t">${esc(m.t)}</span><span class="tile-s">${esc(m.s)}</span></a>`).join('')}</div></section>`;
   h += `<section class="two"><div class="panel"><h2>Klausur-Top-10</h2><p class="faint">Das musst du sicher können (Annahme aus Folien und Praktika – Klausurformat noch offen).</p><ol class="top10">${TOP10.map(([t, m]) => `<li><a href="#modul-${m}">${esc(t)}</a></li>`).join('')}</ol></div>`;
   h += `<div class="panel"><h2>Diese Woche</h2>${wk ? `<div class="wk-h"><span class="mono">${esc(wk.kw)} · ${esc(wk.range)}</span><span class="tag">${esc(wk.phase)} · ${wk.h} h</span></div><div class="wk-f">${esc(wk.focus)}</div>${wk.items.map((t, i) => { const k = wk.id + ':' + i, c = !!S.checks[k]; return `<label class="cb line ${c ? 'done' : ''}"><input type="checkbox" data-act="tick" data-k="${k}" ${c ? 'checked' : ''}> <span>${esc(t)}</span></label>`; }).join('')}` : '<p class="faint">Kein Wocheneintrag.</p>'}<a class="link" href="#mehr">Ganzer Wochenplan ›</a></div></section>`;
   return h;
@@ -368,16 +475,18 @@ function startView() {
 function moduleView(mid) {
   const m = MOD[mid], cs = ALLCARDS.filter(c => c.m === mid), qs = QZ.filter(q => q.m === mid), ps = PUZZLES.filter(p => p.m === mid), ex = EXS.filter(e => e.m === mid);
   const due = dueCards(mid).length, nw = newCards(mid).length;
-  const labs = { joins: [['join', 'Join-Labor']], algebra: [['algebra', 'Algebra-Labor'], ['join', 'Join-Labor']], agg: [['group', 'GROUP BY Schritt für Schritt']], null: [['null', 'NULL-Logik-Trainer']], sql: [['group', 'GROUP BY Schritt für Schritt']] }[mid] || [];
+  const labs = { kalkuel: [['algebra', 'Algebra-Labor (Division)']], dml: [], joins: [['join', 'Join-Labor']], algebra: [['algebra', 'Algebra-Labor'], ['join', 'Join-Labor']], agg: [['group', 'GROUP BY Schritt für Schritt']], null: [['null', 'NULL-Logik-Trainer']], sql: [['group', 'GROUP BY Schritt für Schritt']] }[mid] || [];
   let h = `${back('start', 'Start')}<section class="mhead" style="--mc:${m.c}">${ring(modProgress(mid), m.c, 84, 8)}<div><h1>${esc(m.t)}</h1><p class="faint">${esc(m.s)}</p></div></section>`;
+  h += lessonHTML(mid);
   h += `<section class="actions">
     <button class="act" data-act="cards" data-k="${mid}" style="--mc:${m.c}">${ICON.cards}<b>Karteikarten</b><span>${cs.length} Karten · ${cs.filter(mastered).length} gemeistert${due + nw ? ` · ${due + nw} offen` : ''}</span></button>
     <button class="act" data-act="quiz" data-k="${mid}" style="--mc:${m.c}">${ICON.quiz}<b>Quiz</b><span>${qs.length} Fragen · Bestwert ${S.quizBest[mid] || 0} %</span></button>
+    <button class="act" data-act="copyrem" data-k="${mid}" style="--mc:${m.c}">${ICON.book}<b>Nach RemNote kopieren</b><span>${cs.length} Karten als „Frage == Antwort“</span></button>
     ${labs.map(([k, t]) => `<button class="act" data-act="lab" data-k="${k}" style="--mc:${m.c}">${ICON.lab}<b>${esc(t)}</b><span>interaktiv ausprobieren</span></button>`).join('')}
   </section>`;
   h += `<section class="panel"><h2>Das Wichtigste</h2><div class="kern">${m.kern.map(([t, d], i) => `<div class="k"><span class="kn" style="background:${m.c}">${i + 1}</span><div><b>${esc(t)}</b><p>${esc(d)}</p></div></div>`).join('')}</div><div class="merke" style="--mc:${m.c}"><b>Merksatz</b> ${esc(m.merke)}</div></section>`;
   if (ps.length) h += `<section><div class="sh"><h2>Puzzles</h2></div><div class="plist">${ps.map(p => `<button class="pz ${S.puz[p.id] ? 'done' : ''}" data-act="pzopen" data-k="${p.id}"><span class="pz-k">${esc({ order: 'Reihenfolge', gap: 'Lücken', bug: 'Fehler finden' }[p.k])}</span><b>${esc(p.t)}</b>${S.puz[p.id] ? `<span class="okdot">${ICON.check}</span>` : ''}</button>`).join('')}</div></section>`;
-  if (ex.length) h += `<section><div class="sh"><h2>Übungen</h2><span class="faint">${ex.filter(e => S.checks[e.key] || (e.task && S.solved[e.task])).length}/${ex.length} gelöst</span></div><div class="stack">${ex.map(exCard).join('')}</div></section>`;
+  if (ex.length) h += `<section><div class="sh"><h2>Übungen${mid === 'algebra' ? ' & Algebra auf Papier' : ''}</h2><span class="faint">${ex.filter(e => S.checks[e.key] || (e.task && S.solved[e.task])).length}/${ex.length} gelöst</span></div><div class="stack">${ex.map(exCard).join('')}</div></section>`;
   h += `<section><div class="sh"><h2>Folien</h2><span class="faint">aus ${m.lec.map(l => 'VL #' + l.slice(1)).join(', ')}</span></div>${gallery(m.slides)}</section>`;
   return h;
 }
@@ -393,19 +502,20 @@ function cardsView() {
   const c = FC.queue[FC.i], st = S.cards[c.id], m = MOD[c.m];
   return `<div class="focus"><div class="row between"><a class="back" href="#karten" data-act="cardsEnd">‹ Beenden</a><span class="faint">${FC.i + 1} / ${FC.queue.length}</span></div><div class="prog"><div style="width:${FC.i / FC.queue.length * 100}%"></div></div>
   <button class="flash ${FC.flipped ? 'flipped' : ''}" data-act="flip" aria-label="Karte umdrehen"><span class="flash-in"><span class="face front"><span class="q-meta" style="color:${m.c}">${esc(m.t)}${st ? ' · Stufe ' + st.b : ' · neu'}</span><span class="q-big">${esc(c.f)}</span><span class="faint">Antippen zum Umdrehen</span></span><span class="face backf"><span class="q-meta">Antwort</span><span class="ans">${esc(c.b)}</span></span></span></button>
+  <p class="kbdhint">Tastatur: <span class="kbd">Leertaste</span> umdrehen · <span class="kbd">1</span> nochmal · <span class="kbd">2</span> schwer · <span class="kbd">3</span> gewusst</p>
   ${FC.flipped ? `<div class="rate"><button class="btn big bad" data-act="rate" data-k="again">Nochmal<small>gleich wieder</small></button><button class="btn big" data-act="rate" data-k="hard">Schwer<small>morgen</small></button><button class="btn big good" data-act="rate" data-k="good">Gewusst<small>${IV[Math.min(5, (st ? st.b : 0) + 1)]} Tag(e)</small></button></div>` : `<div class="rate"><button class="btn big pri wide" data-act="flip">Antwort zeigen</button></div>`}</div>`;
 }
 
 function quizView() {
-  if (!QS) return `<section><h1>Quiz</h1><p class="faint">Multiple Choice mit Erklärung. Pro Modul wird dein Bestwert gespeichert.</p><button class="hero-btn" data-act="quizmix">${ICON.quiz}<span><b>Klausur-Mix starten</b><span>15 zufällige Fragen aus allen Modulen</span></span></button></section><section><div class="sh"><h2>Nach Modul</h2></div><div class="tiles">${MODULES.map(m => `<button class="tile" data-act="quiz" data-k="${m.id}" style="--mc:${m.c}">${ring(S.quizBest[m.id] || 0, m.c)}<span class="tile-t">${esc(m.t)}</span><span class="tile-s">${QZ.filter(q => q.m === m.id).length} Fragen · Bestwert ${S.quizBest[m.id] || 0} %</span></button>`).join('')}</div></section>`;
+  if (!QS) return `<section><h1>Quiz</h1><p class="faint">Multiple Choice mit Erklärung. Pro Modul wird dein Bestwert gespeichert.</p><button class="hero-btn" data-act="quizmix">${ICON.quiz}<span><b>Klausur-Mix starten</b><span>15 zufällige Fragen aus allen Modulen</span></span></button>${Object.keys(S.wrong).length ? `<button class="qa" data-act="quizmine"><span class="qa-ic">${ICON.quiz}</span><span><b>Meine Fehlerliste (${Object.keys(S.wrong).length})</b><span>Falsch beantwortete Fragen – verschwinden nach 2× richtig</span></span></button>` : ''}</section><section><div class="sh"><h2>Nach Modul</h2></div><div class="tiles">${MODULES.map(m => `<button class="tile" data-act="quiz" data-k="${m.id}" style="--mc:${m.c}">${ring(S.quizBest[m.id] || 0, m.c)}<span class="tile-t">${esc(m.t)}</span><span class="tile-s">${QZ.filter(q => q.m === m.id).length} Fragen · Bestwert ${S.quizBest[m.id] || 0} %</span></button>`).join('')}</div></section>`;
   if (QS.i >= QS.qs.length) {
     const pct = Math.round(QS.score / QS.qs.length * 100);
     return `<div class="focus"><div class="qcard center">${ring(pct, pct >= 80 ? 'var(--good)' : pct >= 50 ? 'var(--warm)' : 'var(--bad)', 120, 10)}<h1>${QS.score} von ${QS.qs.length} richtig</h1><p class="faint">${esc(QS.title)}${QS.mid ? ' · Bestwert ' + (S.quizBest[QS.mid] || 0) + ' %' : ''}</p>${QS.wrong.length ? `<div class="wronglist"><h3>Das solltest du wiederholen</h3>${QS.wrong.map(id => { const q = QZ.find(x => x.id === id); return `<div class="wl"><b>${esc(q.q)}</b><span class="good">✓ ${esc(q.o[0])}</span><span class="faint">${esc(q.e)}</span></div>`; }).join('')}</div>` : '<p>Perfekt – keine Fehler!</p>'}<div class="row center">${QS.wrong.length ? `<button class="btn pri big" data-act="quizwrong">Fehler wiederholen</button>` : ''}<button class="btn big" data-act="quizagain">Neue Runde</button><button class="btn big" data-act="quizEnd">Übersicht</button></div></div></div>`;
   }
   const q = QS.qs[QS.i], m = MOD[q.m];
   let h = `<div class="focus"><div class="row between"><a class="back" href="#quiz" data-act="quizEnd">‹ Beenden</a><span class="faint">Frage ${QS.i + 1} / ${QS.qs.length} · ${QS.score} richtig</span></div><div class="prog"><div style="width:${QS.i / QS.qs.length * 100}%"></div></div><div class="qcard"><div class="q-meta" style="color:${m.c}">${esc(m.t)}</div><div class="q-big">${esc(q.q)}</div><div class="opts">${q.opts.map((o, k) => { const st = QS.picked === null ? '' : o.ok ? 'right' : k === QS.picked ? 'wrong' : 'dim'; return `<button class="opt ${st}" data-act="ans" data-k="${k}" ${QS.picked !== null ? 'disabled' : ''}><span class="ok-l">${'ABCD'[k]}</span><span>${esc(o.t)}</span></button>`; }).join('')}</div>`;
-  if (QS.picked !== null) { const ok = q.opts[QS.picked].ok; h += `<div class="feedback ${ok ? 'good' : 'bad'}"><b>${ok ? 'Richtig!' : 'Leider falsch.'}</b><span>${esc(q.e)}</span><button class="btn pri" data-act="nextq">${QS.i + 1 < QS.qs.length ? 'Weiter ›' : 'Auswertung ›'}</button></div>`; }
-  return h + '</div></div>';
+  if (QS.picked !== null) { const ok = q.opts[QS.picked].ok; h += `<div class="feedback ${ok ? 'good' : 'bad'}"><b>${ok ? 'Richtig!' : 'Leider falsch.'}</b><span>${esc(q.e)}</span><div class="row"><button class="btn pri" data-act="nextq">${QS.i + 1 < QS.qs.length ? 'Weiter ›' : 'Auswertung ›'}</button>${ok ? '' : `<a class="btn" href="#modul-${q.m}">Lektion „${esc(m.t)}“</a>`}</div></div>`; }
+  return h + '</div><p class="kbdhint">Tastatur: <span class="kbd">1</span>–<span class="kbd">4</span> oder <span class="kbd">A</span>–<span class="kbd">D</span> antworten · <span class="kbd">Enter</span> weiter</p></div>';
 }
 
 let LABV = 'join';
@@ -424,7 +534,7 @@ function konsoleView() {
   const t = con.task ? TASKS[con.task] : null;
   let h = `<section class="sh"><div><h1>SQL-Konsole</h1><p class="faint">SQLite im Browser · <span class="kbd">Strg</span> + <span class="kbd">Enter</span> führt aus${t ? ' bzw. prüft' : ''}.</p></div><div class="row"><select id="dbsel" class="sel" aria-label="Datenbank">${Object.entries(DBS).map(([k, v]) => `<option value="${k}" ${k === con.db ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select><button class="btn" data-act="resetDb">Zurücksetzen</button></div></section><div class="con"><div class="con-main">`;
   if (t) h += `<div class="taskbar"><div class="row between"><b>${esc(t.titel)}</b><div class="row">${S.solved[con.task] ? '<span class="tag good">gelöst</span>' : ''}<button class="btn sm" data-act="closeTask">Schließen</button></div></div><div class="pre-line">${esc(t.text)}</div>${t.pre ? `<div class="pre-note">Wird vorher automatisch ausgeführt:\n${esc(t.pre)}</div>` : ''}<div class="row">${t.tipp ? tog('ch:' + con.task, 'Denkanstoß', 'Denkanstoß zu') : ''}${tog('cs:' + con.task, 'Lösung', 'Lösung zu')}</div>${t.tipp && shown['ch:' + con.task] ? `<div class="tip"><b>Denkanstoß</b> ${esc(t.tipp)}</div>` : ''}${shown['cs:' + con.task] ? `<div class="sol">${esc(t.loesung)}</div>` : ''}</div>`;
-  else h += `<div class="taskbar soft"><b>Freies Üben</b><span class="faint">Oder hol dir eine Aufgabe mit automatischer Prüfung:</span><div class="row"><button class="btn sm" data-act="randTask" data-k="1">Zufall Level 1</button><button class="btn sm" data-act="randTask" data-k="2">Level 2</button><button class="btn sm" data-act="randTask" data-k="3">Level 3</button></div></div>`;
+  else h += `<div class="taskbar soft"><b>Freies Üben</b><span class="faint">Oder hol dir eine Aufgabe mit automatischer Prüfung:</span><div class="row"><button class="btn sm pri" data-act="randTask" data-k="4">Klausurniveau</button><button class="btn sm" data-act="randTask" data-k="3">Level 3</button><button class="btn sm" data-act="randTask" data-k="2">Level 2</button><button class="btn sm" data-act="randTask" data-k="1">Level 1</button></div></div>`;
   h += `<textarea id="ed" class="editor" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="SQL-Eingabe" placeholder="SELECT * FROM Studenten WHERE Semester = 2;">${esc(con.text)}</textarea><div class="row"><button class="btn pri big" data-act="run">Ausführen</button>${t ? '<button class="btn good big" data-act="check">Prüfen</button>' : ''}<button class="btn" data-act="clear">Leeren</button></div><div id="con-out" class="stack"></div></div>
   <aside class="side"><div class="panel tight"><h3>Relationen</h3><div id="con-schema"></div></div><div class="panel tight"><h3>SQLite-Hinweise</h3><ul class="small"><li>EXCEPT statt MINUS, COALESCE statt NVL</li><li>WITH RECURSIVE statt CONNECT BY</li><li>kein ALL / ANY → max() / min()</li><li>Ganzzahl / Ganzzahl rechnet ganzzahlig</li><li>kein PL/SQL; im Familienbaum gibt es BerechneAlter(Name)</li></ul></div><div class="panel tight hist"><h3>Verlauf</h3><div id="con-hist"></div></div></aside></div>`;
   return h;
@@ -442,7 +552,9 @@ function praktikaView() {
 
 let confirmReset = false;
 function mehrView() {
-  let h = `<section><h1>Mehr</h1></section><section class="panel"><h2>Wochenplan</h2><p class="faint">6 h/Woche bis Weihnachten, 12 h/Woche ab Januar. Klausurtermin noch offen.</p><div class="weeks">${WEEKS.map(w => `<div class="wk"><div class="wk-h"><span class="mono">${esc(w.kw)} · ${esc(w.range)}</span><span class="tag">${esc(w.phase)} · ${w.h} h</span></div><div class="wk-f">${esc(w.focus)}</div>${w.items.map((t, i) => { const k = w.id + ':' + i, c = !!S.checks[k]; return `<label class="cb line ${c ? 'done' : ''}"><input type="checkbox" data-act="tick" data-k="${k}" ${c ? 'checked' : ''}> <span>${esc(t)}</span></label>`; }).join('')}</div>`).join('')}</div></section>`;
+  let h = `<section><h1>Mehr</h1><div class="quick">${[['puzzles', 'SQL-Puzzles', ICON.puzzle], ['konsole', 'Konsole', ICON.term], ['praktika', 'Praktika', ICON.book], ['klausur', 'Probeklausur', ICON.exam]].map(([r, t, ic]) => `<a class="qa" href="#${r}"><span class="qa-ic">${ic}</span><span><b>${t}</b></span></a>`).join('')}</div></section><section class="panel" id="suche"><h2>Suche</h2><input id="search" class="sbox" type="search" placeholder="Begriff suchen …" value="${esc(SQ)}" aria-label="Lerninhalte durchsuchen" autocomplete="off"><div id="sres" class="stack">${searchResults(SQ)}</div></section>
+  <section class="panel"><h2>Karteikarten nach RemNote</h2><p class="faint">Alle ${ALLCARDS.length} Karten im Format „Frage == Antwort“, nach Modul gegliedert. In RemNote einfügen – die Einrückung macht jedes Modul zum Ordner.</p><div class="row"><button class="btn pri" data-act="copyrem" data-k="">Alle kopieren</button>${MODULES.map(m => `<button class="btn sm" data-act="copyrem" data-k="${m.id}">${esc(m.t)}</button>`).join('')}</div><textarea id="remtxt" class="editor small-ed" hidden aria-label="RemNote-Text"></textarea></section>
+  <section class="panel"><h2>Wochenplan</h2><p class="faint">6 h/Woche bis Weihnachten, 12 h/Woche ab Januar. Klausurtermin noch offen.</p><div class="weeks">${WEEKS.map(w => `<div class="wk"><div class="wk-h"><span class="mono">${esc(w.kw)} · ${esc(w.range)}</span><span class="tag">${esc(w.phase)} · ${w.h} h</span></div><div class="wk-f">${esc(w.focus)}</div>${w.items.map((t, i) => { const k = w.id + ':' + i, c = !!S.checks[k]; return `<label class="cb line ${c ? 'done' : ''}"><input type="checkbox" data-act="tick" data-k="${k}" ${c ? 'checked' : ''}> <span>${esc(t)}</span></label>`; }).join('')}</div>`).join('')}</div></section>`;
   h += `<section class="panel"><h2>Spickzettel</h2><div class="fgrid">${FORMULAS.map(g => `<div class="fcard"><h3>${esc(g.g)}</h3>${g.items.map(([a, b]) => `<div class="frow"><span>${esc(a)}</span><code>${esc(b)}</code></div>`).join('')}</div>`).join('')}</div></section>`;
   h += `<section class="panel"><h2>Vorlesungen & Folien</h2><div class="stack">${LECTURES.filter(l => l.available).map(l => `<details class="lec"><summary><b>#${esc(l.nr)}</b> ${esc(l.title)}</summary><div class="lec-b"><div class="small faint">${l.folien.map(f => `${esc(f.s)}: ${esc(f.w)}`).join(' · ')}</div><h4>Typische Fallen</h4><ul class="small">${l.fallen.map(f => `<li>${esc(f)}</li>`).join('')}</ul>${gallery(l.images.map(i => i.id))}</div></details>`).join('')}</div></section>`;
   h += `<section class="panel"><h2>Strategie</h2><ol class="strat">${STRATEGIE.map(s => `<li>${esc(s)}</li>`).join('')}</ol><p class="small">Werkzeuge: <a href="https://dbis-uibk.github.io/relax/landing">RelaX</a> · <a href="https://hyper-db.de/interface.html">HyPer</a> · DBPRAKT über eduVPN → 10.28.1.3:1521, SID DBPRAKT</p><div class="row">${confirmReset ? '<span>Wirklich alles löschen?</span><button class="btn bad" data-act="resetYes">Ja, zurücksetzen</button><button class="btn" data-act="resetNo">Abbrechen</button>' : '<button class="btn" data-act="reset">Fortschritt zurücksetzen</button>'}</div></section>`;
@@ -460,6 +572,7 @@ function render() {
   else if (r === 'puzzles') v.innerHTML = puzzlesView();
   else if (r === 'praktika') v.innerHTML = praktikaView();
   else if (r === 'mehr') v.innerHTML = mehrView();
+  else if (r === 'klausur') { v.innerHTML = examView(); if (KL && !KL.done) tickExam(); }
   else if (r === 'konsole') {
     v.innerHTML = konsoleView(); renderOut(); renderSide(); if (!con.inst) resetDb();
     const ed = $('ed');
@@ -472,7 +585,7 @@ const keep = () => { const y = window.scrollY; render(); window.scrollTo(0, y); 
 
 /* ================= Events ================= */
 document.addEventListener('click', e => {
-  const na = e.target.closest('nav#nav a');
+  const na = e.target.closest('nav#nav a, nav#bnav a');
   if (na && na.getAttribute('href').slice(1) === route()) { e.preventDefault(); if (route() === 'puzzles') PZ = null; if (route() === 'karten' && FC && FC.i >= FC.queue.length) FC = null; if (route() === 'quiz' && QS && QS.i >= QS.qs.length) QS = null; render(); window.scrollTo(0, 0); return; }
   const el = e.target.closest('[data-act]'); if (!el) return;
   const a = el.dataset.act, k = el.dataset.k;
@@ -488,6 +601,8 @@ document.addEventListener('click', e => {
     case 'quiz': startQuiz(k); break;
     case 'quizmix': startQuiz(null); break;
     case 'quizwrong': startQuiz(null, QS.wrong.slice()); break;
+    case 'quizmine': startQuiz(null, Object.keys(S.wrong)); break;
+    case 'copyrem': { const txt = remnoteText(k); const done = () => { el.textContent = 'Kopiert ✓'; }; try { navigator.clipboard.writeText(txt).then(done, () => { const ta = $('remtxt'); if (ta) { ta.hidden = false; ta.value = txt; ta.select(); } }); } catch (err) { const ta = $('remtxt'); if (ta) { ta.hidden = false; ta.value = txt; ta.select(); } } break; }
     case 'quizagain': startQuiz(QS.mid); break;
     case 'quizEnd': QS = null; go('quiz'); break;
     case 'ans': answer(+k); break;
@@ -505,6 +620,15 @@ document.addEventListener('click', e => {
     case 'nx': NL.exAns = k; markActive(); keep(); break;
     case 'nxnext': NL.ex = (NL.ex + 1) % NEXPR.length; NL.exAns = null; keep(); break;
     case 'pzopen': openPuzzle(k); break;
+    case 'lstep': { const [mm, j] = k.split(':'); LS[mm] = Math.max(0, +j); keep(); const el2 = $('lektion'); if (el2 && el2.getBoundingClientRect().top < 60) el2.scrollIntoView({ block: 'start' }); break; }
+    case 'ldone': S.lessons[k] = true; markActive(); save(); keep(); break;
+    case 'lessonAt': { const [mm, j] = k.split(':'); LS[mm] = +j; go('modul-' + mm); setTimeout(() => { const el2 = $('lektion'); if (el2) el2.scrollIntoView({ block: 'start' }); }, 30); break; }
+    case 'lesson': LS[k] = 0; go('modul-' + k); setTimeout(() => { const el2 = $('lektion'); if (el2) el2.scrollIntoView({ block: 'start' }); }, 30); break;
+    case 'exam': startExam(); break;
+    case 'examsubmit': submitExam(); break;
+    case 'exans': { const [i, j] = k.split(':').map(Number); if (!KL.done) { KL.ans[i] = j; keep(); } break; }
+    case 'exgrade': { const [i, v] = k.split(':').map(Number); KL.grade[i] = v; keep(); break; }
+    case 'examsave': { const sc = examScore(); S.exams.push({ d: Date.now(), pct: sc.pct }); save(); KL = null; go('klausur'); break; }
     case 'pzclose': PZ = null; go('puzzles'); break;
     case 'pzadd': PZ.pool = PZ.pool.filter(v => v !== +k); PZ.ans.push(+k); PZ.checked = false; keep(); break;
     case 'pzback': { const v = PZ.ans[+k]; PZ.ans.splice(+k, 1); PZ.pool.push(v); PZ.checked = false; keep(); break; }
@@ -515,7 +639,7 @@ document.addEventListener('click', e => {
     case 'show': shown[k] = !shown[k]; if (route() === 'konsole') { con.text = $('ed').value; render(); } else keep(); break;
     case 'pop': shown['po:' + k] = !(shown['po:' + k] ?? k === 'p6'); keep(); break;
     case 'toConsole': { const t = TASKS[k]; con.task = k; con.db = t.db; con.inst = null; con.out = null; con.msg = null; con.text = ''; go('konsole'); break; }
-    case 'randTask': { const ids = DRILL.filter(d => d.lv === +k).map(d => 'D-' + d.id); const open = ids.filter(i => !S.solved[i]); const id = (open.length ? open : ids)[Math.floor(Math.random() * (open.length || ids.length))]; con.task = id; con.db = 'uni'; con.inst = null; con.out = null; con.msg = null; con.text = ''; render(); break; }
+    case 'randTask': { const ids = DRILL.filter(d => d.lv === +k).map(d => 'D-' + d.id); const open = ids.filter(i => !S.solved[i]); const id = (open.length ? open : ids)[Math.floor(Math.random() * (open.length || ids.length))]; con.task = id; con.db = TASKS[id].db; con.inst = null; con.out = null; con.msg = null; con.text = ''; render(); break; }
     case 'closeTask': con.task = null; con.msg = null; con.text = $('ed').value; render(); break;
     case 'run': runSql(); break;
     case 'check': checkSql(); break;
@@ -526,14 +650,19 @@ document.addEventListener('click', e => {
     case 'lb': { const lb = $('lb'); lb.innerHTML = `<div><img src="slides/${esc(k)}.png" alt="${esc(el.dataset.l)}"><span>${esc(el.dataset.l)} · Tippen oder Esc schließt</span></div>`; lb.hidden = false; break; }
     case 'reset': confirmReset = true; keep(); break;
     case 'resetNo': confirmReset = false; keep(); break;
-    case 'resetYes': S = { cards: {}, quizBest: {}, solved: {}, puz: {}, checks: {}, days: [], hist: [], lv: 0, newDay: { d: 0, n: 0 } }; confirmReset = false; save(); keep(); break;
+    case 'resetYes': S = { cards: {}, quizBest: {}, solved: {}, puz: {}, checks: {}, days: [], hist: [], lv: 0, newDay: { d: 0, n: 0 }, lessons: {}, exams: [], wrong: {} }; confirmReset = false; save(); keep(); break;
   }
 });
 document.addEventListener('change', e => {
   const el = e.target, a = el.dataset.act;
   if (a === 'tick') { S.checks[el.dataset.k] = el.checked; if (el.checked) markActive(); save(); if (route() !== 'konsole') keep(); }
   else if (a === 'gap') { PZ.gaps[+el.dataset.k] = el.value; PZ.checked = false; }
+  else if (a === 'exnote') { KL.notes[+el.dataset.k] = el.value; }
   else if (a === 'jguess') { JL.guess = el.checked; JL.guessed = null; keep(); }
+});
+document.addEventListener('input', e => {
+  const el = e.target; if (el.dataset && el.dataset.act === 'exnote' && KL) KL.notes[+el.dataset.k] = el.value;
+  if (el.id === 'search') { SQ = el.value; const box = $('sres'); if (box) box.innerHTML = searchResults(SQ); }
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') $('lb').hidden = true;

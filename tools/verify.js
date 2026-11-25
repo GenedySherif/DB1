@@ -1,7 +1,7 @@
 const initSqlJs = require('sql.js');
 const DBS = require('../dbs.js');
 const fs = require('fs');
-const src = fs.readFileSync(__dirname + '/../content.js','utf8') + '\nmodule.exports={LECTURES,PRAKTIKA,DRILL};';
+const src = fs.readFileSync(__dirname + '/../content.js','utf8') + fs.readFileSync(__dirname + '/../learn.js','utf8') + fs.readFileSync(__dirname + '/../lessons.js','utf8') + fs.readFileSync(__dirname + '/../klausur.js','utf8') + '\nmodule.exports={LECTURES,PRAKTIKA,DRILL};';
 const m = {exports:{}}; new Function('module', src)(m); const {LECTURES,PRAKTIKA,DRILL} = m.exports;
 initSqlJs().then(SQL => {
   const mk = (k) => { const db = new SQL.Database(); db.run(DBS[k].sql);
