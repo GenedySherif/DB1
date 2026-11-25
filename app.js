@@ -300,7 +300,8 @@ const TV = ['TRUE', 'NULL', 'FALSE'];
 const AND = (a, b) => a === 'FALSE' || b === 'FALSE' ? 'FALSE' : a === 'NULL' || b === 'NULL' ? 'NULL' : 'TRUE';
 const OR = (a, b) => a === 'TRUE' || b === 'TRUE' ? 'TRUE' : a === 'NULL' || b === 'NULL' ? 'NULL' : 'FALSE';
 const NOT = a => a === 'TRUE' ? 'FALSE' : a === 'FALSE' ? 'TRUE' : 'NULL';
-let NL = { in: {}, checked: false, ex: 0, exAns: null };
+let NL = { in: {}, checked: false, ex: 0, exAns: null, ord: { AND: [TV, TV], OR: [TV, TV], NOT: [TV, [null]] } };
+const shuffleTT = n => { NL.ord[n] = [shuffle(TV), n === 'NOT' ? [null] : shuffle(TV)]; Object.keys(NL.in).forEach(k => { if (k.startsWith(n)) delete NL.in[k]; }); NL.checked = false; };
 const NEXPR = [
   ['Semester = NULL (Semester ist NULL)', 'NULL', 'Vergleich mit NULL ergibt immer NULL – auch wenn beide NULL sind.'],
   ['Semester < 13 OR Semester >= 13 (Semester ist NULL)', 'NULL', 'NULL OR NULL = NULL → das Tupel fällt im WHERE heraus.'],
@@ -316,9 +317,9 @@ const NEXPR = [
   ["COALESCE(Semester, 0) = 0 (Semester NULL)", 'TRUE', 'COALESCE ersetzt NULL durch 0.'],
 ];
 function nullLab() {
-  const tbl = (name, f) => `<div class="tt"><div class="vt-name">${name}</div><table class="rt sm ttab"><thead><tr><th>${name === 'NOT' ? 'a' : 'a \\ b'}</th>${name === 'NOT' ? '<th>NOT a</th>' : TV.map(v => `<th>${v}</th>`).join('')}</tr></thead><tbody>${TV.map(a => `<tr><th>${a}</th>${(name === 'NOT' ? [null] : TV).map(b => { const k = name + a + (b || ''), val = NL.in[k], corr = name === 'NOT' ? NOT(a) : f(a, b); const cls = NL.checked ? (val === corr ? 'yes' : 'no') : ''; return `<td><button class="tv ${cls}" data-act="tv" data-k="${k}">${val || '?'}</button></td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`;
+  const tbl = (name, f) => `<div class="tt"><div class="row between"><span class="vt-name">${name}</span><button class="btn sm" data-act="ttmix" data-k="${name}">Mischen</button></div><table class="rt sm ttab"><thead><tr><th>${name === 'NOT' ? 'a' : 'a \\ b'}</th>${name === 'NOT' ? '<th>NOT a</th>' : NL.ord[name][1].map(v => `<th>${v}</th>`).join('')}</tr></thead><tbody>${NL.ord[name][0].map(a => `<tr><th>${a}</th>${NL.ord[name][1].map(b => { const k = name + a + (b || ''), val = NL.in[k], corr = name === 'NOT' ? NOT(a) : f(a, b); const cls = NL.checked ? (val === corr ? 'yes' : 'no') : ''; return `<td><button class="tv ${cls}" data-act="tv" data-k="${k}">${val || '?'}</button></td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`;
   const ex = NEXPR[NL.ex];
-  return `<div class="lab"><p class="hint">Tippe auf ein Feld, um TRUE → NULL → FALSE durchzuschalten. Dann „Prüfen“.</p><div class="ttgrid">${tbl('AND', AND)}${tbl('OR', OR)}${tbl('NOT')}</div><div class="row"><button class="btn pri" data-act="tvcheck">Prüfen</button><button class="btn" data-act="tvreset">Zurücksetzen</button>${NL.checked ? `<span class="msg-inline">${Object.keys(NL.in).length < 21 ? 'Fülle alle 21 Felder aus.' : ''}</span>` : ''}</div>
+  return `<div class="lab"><p class="hint">Tippe auf ein Feld, um TRUE → NULL → FALSE durchzuschalten. Dann „Prüfen“.</p><div class="ttgrid">${tbl('AND', AND)}${tbl('OR', OR)}${tbl('NOT')}</div><div class="row"><button class="btn pri" data-act="tvcheck">Prüfen</button><button class="btn" data-act="ttmix" data-k="all">Alle mischen</button><button class="btn" data-act="tvreset">Zurücksetzen</button>${NL.checked ? `<span class="msg-inline">${Object.keys(NL.in).length < 21 ? 'Fülle alle 21 Felder aus.' : ''}</span>` : ''}</div>
   <h3>Ausdruck-Trainer</h3><div class="qcard"><div class="q-meta">Ausdruck ${NL.ex + 1} / ${NEXPR.length}</div><div class="q-big mono">${esc(ex[0])}</div><div class="opts three">${TV.map(v => { const st = NL.exAns === null ? '' : v === ex[1] ? 'right' : v === NL.exAns ? 'wrong' : 'dim'; return `<button class="opt ${st}" data-act="nx" data-k="${v}" ${NL.exAns !== null ? 'disabled' : ''}>${v}</button>`; }).join('')}</div>${NL.exAns !== null ? `<div class="feedback ${NL.exAns === ex[1] ? 'good' : 'bad'}"><b>${NL.exAns === ex[1] ? 'Richtig!' : 'Leider falsch – richtig: ' + ex[1]}</b><span>${esc(ex[2])}</span><button class="btn pri" data-act="nxnext">Weiter ›</button></div>` : ''}</div></div>`;
 }
 
@@ -616,6 +617,7 @@ document.addEventListener('click', e => {
     case 'gb': GB = +k; keep(); break;
     case 'tv': { const cur = NL.in[k], nx = cur === undefined ? 'TRUE' : cur === 'TRUE' ? 'NULL' : cur === 'NULL' ? 'FALSE' : 'TRUE'; NL.in[k] = nx; NL.checked = false; keep(); break; }
     case 'tvcheck': NL.checked = true; markActive(); keep(); break;
+    case 'ttmix': (k === 'all' ? ['AND', 'OR', 'NOT'] : [k]).forEach(shuffleTT); keep(); break;
     case 'tvreset': NL.in = {}; NL.checked = false; keep(); break;
     case 'nx': NL.exAns = k; markActive(); keep(); break;
     case 'nxnext': NL.ex = (NL.ex + 1) % NEXPR.length; NL.exAns = null; keep(); break;
